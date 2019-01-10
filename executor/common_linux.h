@@ -447,6 +447,7 @@ static void initialize_tun(void)
 // Create/up as many as we can.
 static void initialize_netdevices(void)
 {
+	return;
 #if SYZ_EXECUTOR
 	if (!flag_enable_net_dev)
 		return;
