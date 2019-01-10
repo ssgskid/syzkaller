@@ -165,6 +165,7 @@ var linuxCmdline = []string{
 	"vsyscall=native",
 	"net.ifnames=0",
 	"biosdevname=0",
+	"dummy_hcd.num=8",
 }
 
 func ctor(env *vmimpl.Env) (vmimpl.Pool, error) {
