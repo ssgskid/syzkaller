@@ -1676,6 +1676,8 @@ static void reset_ebtables()
 
 static void checkpoint_net_namespace(void)
 {
+	if (!flag_enable_net_reset)
+		return;
 #if SYZ_EXECUTOR
 	if (flag_sandbox == sandbox_setuid)
 		return;
@@ -1688,6 +1690,8 @@ static void checkpoint_net_namespace(void)
 
 static void reset_net_namespace(void)
 {
+	if (!flag_enable_net_reset)
+		return;
 #if SYZ_EXECUTOR
 	if (flag_sandbox == sandbox_setuid)
 		return;
@@ -1707,6 +1711,8 @@ static void reset_net_namespace(void)
 
 static void setup_cgroups()
 {
+	if (!flag_enable_cgroups)
+		return;
 	if (mkdir("/syzcgroup", 0777)) {
 		debug("mkdir(/syzcgroup) failed: %d\n", errno);
 	}
@@ -1745,6 +1751,8 @@ static void setup_cgroups()
 // but for now we bundle this with cgroups.
 static void setup_binfmt_misc()
 {
+	if (!flag_enable_cgroups)
+		return;
 	if (mount(0, "/proc/sys/fs/binfmt_misc", "binfmt_misc", 0, 0)) {
 		debug("mount(binfmt_misc) failed: %d\n", errno);
 	}
@@ -2017,22 +2025,24 @@ static int namespace_sandbox_proc(void* arg)
 	if (mount("/sys", "./syz-tmp/newroot/sys", 0, bind_mount_flags, NULL))
 		fail("mount(sysfs) failed");
 #if SYZ_EXECUTOR || SYZ_ENABLE_CGROUPS
-	if (mkdir("./syz-tmp/newroot/syzcgroup", 0700))
-		fail("mkdir failed");
-	if (mkdir("./syz-tmp/newroot/syzcgroup/unified", 0700))
-		fail("mkdir failed");
-	if (mkdir("./syz-tmp/newroot/syzcgroup/cpu", 0700))
-		fail("mkdir failed");
-	if (mkdir("./syz-tmp/newroot/syzcgroup/net", 0700))
-		fail("mkdir failed");
-	if (mount("/syzcgroup/unified", "./syz-tmp/newroot/syzcgroup/unified", NULL, bind_mount_flags, NULL)) {
-		debug("mount(cgroup2, MS_BIND) failed: %d\n", errno);
-	}
-	if (mount("/syzcgroup/cpu", "./syz-tmp/newroot/syzcgroup/cpu", NULL, bind_mount_flags, NULL)) {
-		debug("mount(cgroup/cpu, MS_BIND) failed: %d\n", errno);
-	}
-	if (mount("/syzcgroup/net", "./syz-tmp/newroot/syzcgroup/net", NULL, bind_mount_flags, NULL)) {
-		debug("mount(cgroup/net, MS_BIND) failed: %d\n", errno);
+	if (flag_enable_cgroups) {
+		if (mkdir("./syz-tmp/newroot/syzcgroup", 0700))
+			fail("mkdir failed");
+		if (mkdir("./syz-tmp/newroot/syzcgroup/unified", 0700))
+			fail("mkdir failed");
+		if (mkdir("./syz-tmp/newroot/syzcgroup/cpu", 0700))
+			fail("mkdir failed");
+		if (mkdir("./syz-tmp/newroot/syzcgroup/net", 0700))
+			fail("mkdir failed");
+		if (mount("/syzcgroup/unified", "./syz-tmp/newroot/syzcgroup/unified", NULL, bind_mount_flags, NULL)) {
+			debug("mount(cgroup2, MS_BIND) failed: %d\n", errno);
+		}
+		if (mount("/syzcgroup/cpu", "./syz-tmp/newroot/syzcgroup/cpu", NULL, bind_mount_flags, NULL)) {
+			debug("mount(cgroup/cpu, MS_BIND) failed: %d\n", errno);
+		}
+		if (mount("/syzcgroup/net", "./syz-tmp/newroot/syzcgroup/net", NULL, bind_mount_flags, NULL)) {
+			debug("mount(cgroup/net, MS_BIND) failed: %d\n", errno);
+		}
 	}
 #endif
 	if (mkdir("./syz-tmp/pivot", 0777))
@@ -2455,50 +2465,52 @@ static void kill_and_wait(int pid, int* status)
 static void setup_loop()
 {
 #if SYZ_EXECUTOR || SYZ_ENABLE_CGROUPS
-	int pid = getpid();
-	char cgroupdir[64];
-	char file[128];
-	snprintf(cgroupdir, sizeof(cgroupdir), "/syzcgroup/unified/syz%llu", procid);
-	if (mkdir(cgroupdir, 0777)) {
-		debug("mkdir(%s) failed: %d\n", cgroupdir, errno);
+	if (flag_enable_cgroups) {
+		int pid = getpid();
+		char file[128];
+		char cgroupdir[64];
+		snprintf(cgroupdir, sizeof(cgroupdir), "/syzcgroup/unified/syz%llu", procid);
+		if (mkdir(cgroupdir, 0777)) {
+			debug("mkdir(%s) failed: %d\n", cgroupdir, errno);
+		}
+		// Restrict number of pids per test process to prevent fork bombs.
+		// We have up to 16 threads + main process + loop.
+		// 32 pids should be enough for everyone.
+		snprintf(file, sizeof(file), "%s/pids.max", cgroupdir);
+		write_file(file, "32");
+		// Restrict memory consumption.
+		// We have some syscalls that inherently consume lots of memory,
+		// e.g. mounting some filesystem images requires at least 128MB
+		// image in memory. We restrict RLIMIT_AS to 200MB. Here we gradually
+		// increase low/high/max limits to make things more interesting.
+		// Also this takes into account KASAN quarantine size.
+		// If the limit is lower than KASAN quarantine size, then it can happen
+		// so that we kill the process, but all of its memory is in quarantine
+		// and is still accounted against memcg. As the result memcg won't
+		// allow to allocate any memory in the parent and in the new test process.
+		// The current limit of 300MB supports up to 9.6GB RAM (quarantine is 1/32).
+		snprintf(file, sizeof(file), "%s/memory.low", cgroupdir);
+		write_file(file, "%d", 298 << 20);
+		snprintf(file, sizeof(file), "%s/memory.high", cgroupdir);
+		write_file(file, "%d", 299 << 20);
+		snprintf(file, sizeof(file), "%s/memory.max", cgroupdir);
+		write_file(file, "%d", 300 << 20);
+		// Setup some v1 groups to make things more interesting.
+		snprintf(file, sizeof(file), "%s/cgroup.procs", cgroupdir);
+		write_file(file, "%d", pid);
+		snprintf(cgroupdir, sizeof(cgroupdir), "/syzcgroup/cpu/syz%llu", procid);
+		if (mkdir(cgroupdir, 0777)) {
+			debug("mkdir(%s) failed: %d\n", cgroupdir, errno);
+		}
+		snprintf(file, sizeof(file), "%s/cgroup.procs", cgroupdir);
+		write_file(file, "%d", pid);
+		snprintf(cgroupdir, sizeof(cgroupdir), "/syzcgroup/net/syz%llu", procid);
+		if (mkdir(cgroupdir, 0777)) {
+			debug("mkdir(%s) failed: %d\n", cgroupdir, errno);
+		}
+		snprintf(file, sizeof(file), "%s/cgroup.procs", cgroupdir);
+		write_file(file, "%d", pid);
 	}
-	// Restrict number of pids per test process to prevent fork bombs.
-	// We have up to 16 threads + main process + loop.
-	// 32 pids should be enough for everyone.
-	snprintf(file, sizeof(file), "%s/pids.max", cgroupdir);
-	write_file(file, "32");
-	// Restrict memory consumption.
-	// We have some syscalls that inherently consume lots of memory,
-	// e.g. mounting some filesystem images requires at least 128MB
-	// image in memory. We restrict RLIMIT_AS to 200MB. Here we gradually
-	// increase low/high/max limits to make things more interesting.
-	// Also this takes into account KASAN quarantine size.
-	// If the limit is lower than KASAN quarantine size, then it can happen
-	// so that we kill the process, but all of its memory is in quarantine
-	// and is still accounted against memcg. As the result memcg won't
-	// allow to allocate any memory in the parent and in the new test process.
-	// The current limit of 300MB supports up to 9.6GB RAM (quarantine is 1/32).
-	snprintf(file, sizeof(file), "%s/memory.low", cgroupdir);
-	write_file(file, "%d", 298 << 20);
-	snprintf(file, sizeof(file), "%s/memory.high", cgroupdir);
-	write_file(file, "%d", 299 << 20);
-	snprintf(file, sizeof(file), "%s/memory.max", cgroupdir);
-	write_file(file, "%d", 300 << 20);
-	// Setup some v1 groups to make things more interesting.
-	snprintf(file, sizeof(file), "%s/cgroup.procs", cgroupdir);
-	write_file(file, "%d", pid);
-	snprintf(cgroupdir, sizeof(cgroupdir), "/syzcgroup/cpu/syz%llu", procid);
-	if (mkdir(cgroupdir, 0777)) {
-		debug("mkdir(%s) failed: %d\n", cgroupdir, errno);
-	}
-	snprintf(file, sizeof(file), "%s/cgroup.procs", cgroupdir);
-	write_file(file, "%d", pid);
-	snprintf(cgroupdir, sizeof(cgroupdir), "/syzcgroup/net/syz%llu", procid);
-	if (mkdir(cgroupdir, 0777)) {
-		debug("mkdir(%s) failed: %d\n", cgroupdir, errno);
-	}
-	snprintf(file, sizeof(file), "%s/cgroup.procs", cgroupdir);
-	write_file(file, "%d", pid);
 #endif
 #if SYZ_EXECUTOR || SYZ_RESET_NET_NAMESPACE
 	checkpoint_net_namespace();

@@ -199,6 +199,8 @@ func main() {
 	if r.CheckResult.Features[host.FeatureFaultInjection].Enabled {
 		config.Flags |= ipc.FlagEnableFault
 	}
+	config.Flags |= ipc.FlagEnableNetReset
+	config.Flags |= ipc.FlagEnableCgroups
 
 	if *flagRunTest {
 		runTest(target, manager, *flagName, config.Executor)

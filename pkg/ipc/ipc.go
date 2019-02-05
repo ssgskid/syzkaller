@@ -33,6 +33,8 @@ const (
 	FlagSandboxAndroidUntrustedApp                      // use Android sandboxing for the untrusted_app domain
 	FlagEnableTun                                       // initialize and use tun in executor
 	FlagEnableNetDev                                    // setup a bunch of various network devices for testing
+	FlagEnableNetReset                                  // reset network namespace between programs
+	FlagEnableCgroups                                   // setup cgroups for testing
 	FlagEnableFault                                     // enable fault injection support
 	FlagExtraCover                                      // collect extra coverage
 	// Executor does not know about these:

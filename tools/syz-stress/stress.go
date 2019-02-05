@@ -71,6 +71,8 @@ func main() {
 	if features[host.FeatureNetworkDevices].Enabled {
 		config.Flags |= ipc.FlagEnableNetDev
 	}
+	config.Flags |= ipc.FlagEnableNetReset
+	config.Flags |= ipc.FlagEnableCgroups
 	gate = ipc.NewGate(2**flagProcs, nil)
 	for pid := 0; pid < *flagProcs; pid++ {
 		pid := pid

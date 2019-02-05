@@ -26,15 +26,19 @@ import (
 )
 
 var (
-	flagOS        = flag.String("os", runtime.GOOS, "target os")
-	flagArch      = flag.String("arch", runtime.GOARCH, "target arch")
-	flagCoverFile = flag.String("coverfile", "", "write coverage to the file")
-	flagRepeat    = flag.Int("repeat", 1, "repeat execution that many times (0 for infinite loop)")
-	flagProcs     = flag.Int("procs", 1, "number of parallel processes to execute programs")
-	flagOutput    = flag.Bool("output", false, "write programs and results to stdout")
-	flagFaultCall = flag.Int("fault_call", -1, "inject fault into this call (0-based)")
-	flagFaultNth  = flag.Int("fault_nth", 0, "inject fault on n-th operation (0-based)")
-	flagHints     = flag.Bool("hints", false, "do a hints-generation run")
+	flagOS         = flag.String("os", runtime.GOOS, "target os")
+	flagArch       = flag.String("arch", runtime.GOARCH, "target arch")
+	flagCoverFile  = flag.String("coverfile", "", "write coverage to the file")
+	flagRepeat     = flag.Int("repeat", 1, "repeat execution that many times (0 for infinite loop)")
+	flagProcs      = flag.Int("procs", 1, "number of parallel processes to execute programs")
+	flagOutput     = flag.Bool("output", false, "write programs and results to stdout")
+	flagFaultCall  = flag.Int("fault_call", -1, "inject fault into this call (0-based)")
+	flagFaultNth   = flag.Int("fault_nth", 0, "inject fault on n-th operation (0-based)")
+	flagHints      = flag.Bool("hints", false, "do a hints-generation run")
+	flagNoTun      = flag.Bool("notun", false, "don't set up TUN/TAP interface")
+	flagNoNetDev   = flag.Bool("nonetdev", false, "don't setup various net devices")
+	flagNoNetReset = flag.Bool("nonetreset", false, "don't reset network namespace between programs")
+	flagNoCgroups  = flag.Bool("nocgroups", false, "don't setup cgroups")
 )
 
 func main() {
@@ -299,11 +303,17 @@ func createConfig(target *prog.Target, entries []*prog.LogEntry, features *host.
 			handled[call.Meta.CallName] = true
 		}
 	}
-	if features[host.FeatureNetworkInjection].Enabled {
+	if !*flagNoTun && features[host.FeatureNetworkInjection].Enabled {
 		config.Flags |= ipc.FlagEnableTun
 	}
-	if features[host.FeatureNetworkDevices].Enabled {
+	if !*flagNoNetDev && features[host.FeatureNetworkDevices].Enabled {
 		config.Flags |= ipc.FlagEnableNetDev
+	}
+	if !*flagNoNetReset {
+		config.Flags |= ipc.FlagEnableNetReset
+	}
+	if !*flagNoCgroups {
+		config.Flags |= ipc.FlagEnableCgroups
 	}
 	return config, execOpts
 }

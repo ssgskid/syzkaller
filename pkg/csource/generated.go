@@ -3487,6 +3487,8 @@ static void reset_ebtables()
 
 static void checkpoint_net_namespace(void)
 {
+	if (!flag_enable_net_reset)
+		return;
 #if SYZ_EXECUTOR
 	if (flag_sandbox == sandbox_setuid)
 		return;
@@ -3499,6 +3501,8 @@ static void checkpoint_net_namespace(void)
 
 static void reset_net_namespace(void)
 {
+	if (!flag_enable_net_reset)
+		return;
 #if SYZ_EXECUTOR
 	if (flag_sandbox == sandbox_setuid)
 		return;
@@ -3518,6 +3522,8 @@ static void reset_net_namespace(void)
 
 static void setup_cgroups()
 {
+	if (!flag_enable_cgroups)
+		return;
 	if (mkdir("/syzcgroup", 0777)) {
 		debug("mkdir(/syzcgroup) failed: %d\n", errno);
 	}
@@ -3553,6 +3559,8 @@ static void setup_cgroups()
 }
 static void setup_binfmt_misc()
 {
+	if (!flag_enable_cgroups)
+		return;
 	if (mount(0, "/proc/sys/fs/binfmt_misc", "binfmt_misc", 0, 0)) {
 		debug("mount(binfmt_misc) failed: %d\n", errno);
 	}
@@ -3798,22 +3806,24 @@ static int namespace_sandbox_proc(void* arg)
 	if (mount("/sys", "./syz-tmp/newroot/sys", 0, bind_mount_flags, NULL))
 		fail("mount(sysfs) failed");
 #if SYZ_EXECUTOR || SYZ_ENABLE_CGROUPS
-	if (mkdir("./syz-tmp/newroot/syzcgroup", 0700))
-		fail("mkdir failed");
-	if (mkdir("./syz-tmp/newroot/syzcgroup/unified", 0700))
-		fail("mkdir failed");
-	if (mkdir("./syz-tmp/newroot/syzcgroup/cpu", 0700))
-		fail("mkdir failed");
-	if (mkdir("./syz-tmp/newroot/syzcgroup/net", 0700))
-		fail("mkdir failed");
-	if (mount("/syzcgroup/unified", "./syz-tmp/newroot/syzcgroup/unified", NULL, bind_mount_flags, NULL)) {
-		debug("mount(cgroup2, MS_BIND) failed: %d\n", errno);
-	}
-	if (mount("/syzcgroup/cpu", "./syz-tmp/newroot/syzcgroup/cpu", NULL, bind_mount_flags, NULL)) {
-		debug("mount(cgroup/cpu, MS_BIND) failed: %d\n", errno);
-	}
-	if (mount("/syzcgroup/net", "./syz-tmp/newroot/syzcgroup/net", NULL, bind_mount_flags, NULL)) {
-		debug("mount(cgroup/net, MS_BIND) failed: %d\n", errno);
+	if (flag_enable_cgroups) {
+		if (mkdir("./syz-tmp/newroot/syzcgroup", 0700))
+			fail("mkdir failed");
+		if (mkdir("./syz-tmp/newroot/syzcgroup/unified", 0700))
+			fail("mkdir failed");
+		if (mkdir("./syz-tmp/newroot/syzcgroup/cpu", 0700))
+			fail("mkdir failed");
+		if (mkdir("./syz-tmp/newroot/syzcgroup/net", 0700))
+			fail("mkdir failed");
+		if (mount("/syzcgroup/unified", "./syz-tmp/newroot/syzcgroup/unified", NULL, bind_mount_flags, NULL)) {
+			debug("mount(cgroup2, MS_BIND) failed: %d\n", errno);
+		}
+		if (mount("/syzcgroup/cpu", "./syz-tmp/newroot/syzcgroup/cpu", NULL, bind_mount_flags, NULL)) {
+			debug("mount(cgroup/cpu, MS_BIND) failed: %d\n", errno);
+		}
+		if (mount("/syzcgroup/net", "./syz-tmp/newroot/syzcgroup/net", NULL, bind_mount_flags, NULL)) {
+			debug("mount(cgroup/net, MS_BIND) failed: %d\n", errno);
+		}
 	}
 #endif
 	if (mkdir("./syz-tmp/pivot", 0777))
@@ -4177,35 +4187,37 @@ static void kill_and_wait(int pid, int* status)
 static void setup_loop()
 {
 #if SYZ_EXECUTOR || SYZ_ENABLE_CGROUPS
-	int pid = getpid();
-	char cgroupdir[64];
-	char file[128];
-	snprintf(cgroupdir, sizeof(cgroupdir), "/syzcgroup/unified/syz%llu", procid);
-	if (mkdir(cgroupdir, 0777)) {
-		debug("mkdir(%s) failed: %d\n", cgroupdir, errno);
+	if (flag_enable_cgroups) {
+		int pid = getpid();
+		char file[128];
+		char cgroupdir[64];
+		snprintf(cgroupdir, sizeof(cgroupdir), "/syzcgroup/unified/syz%llu", procid);
+		if (mkdir(cgroupdir, 0777)) {
+			debug("mkdir(%s) failed: %d\n", cgroupdir, errno);
+		}
+		snprintf(file, sizeof(file), "%s/pids.max", cgroupdir);
+		write_file(file, "32");
+		snprintf(file, sizeof(file), "%s/memory.low", cgroupdir);
+		write_file(file, "%d", 298 << 20);
+		snprintf(file, sizeof(file), "%s/memory.high", cgroupdir);
+		write_file(file, "%d", 299 << 20);
+		snprintf(file, sizeof(file), "%s/memory.max", cgroupdir);
+		write_file(file, "%d", 300 << 20);
+		snprintf(file, sizeof(file), "%s/cgroup.procs", cgroupdir);
+		write_file(file, "%d", pid);
+		snprintf(cgroupdir, sizeof(cgroupdir), "/syzcgroup/cpu/syz%llu", procid);
+		if (mkdir(cgroupdir, 0777)) {
+			debug("mkdir(%s) failed: %d\n", cgroupdir, errno);
+		}
+		snprintf(file, sizeof(file), "%s/cgroup.procs", cgroupdir);
+		write_file(file, "%d", pid);
+		snprintf(cgroupdir, sizeof(cgroupdir), "/syzcgroup/net/syz%llu", procid);
+		if (mkdir(cgroupdir, 0777)) {
+			debug("mkdir(%s) failed: %d\n", cgroupdir, errno);
+		}
+		snprintf(file, sizeof(file), "%s/cgroup.procs", cgroupdir);
+		write_file(file, "%d", pid);
 	}
-	snprintf(file, sizeof(file), "%s/pids.max", cgroupdir);
-	write_file(file, "32");
-	snprintf(file, sizeof(file), "%s/memory.low", cgroupdir);
-	write_file(file, "%d", 298 << 20);
-	snprintf(file, sizeof(file), "%s/memory.high", cgroupdir);
-	write_file(file, "%d", 299 << 20);
-	snprintf(file, sizeof(file), "%s/memory.max", cgroupdir);
-	write_file(file, "%d", 300 << 20);
-	snprintf(file, sizeof(file), "%s/cgroup.procs", cgroupdir);
-	write_file(file, "%d", pid);
-	snprintf(cgroupdir, sizeof(cgroupdir), "/syzcgroup/cpu/syz%llu", procid);
-	if (mkdir(cgroupdir, 0777)) {
-		debug("mkdir(%s) failed: %d\n", cgroupdir, errno);
-	}
-	snprintf(file, sizeof(file), "%s/cgroup.procs", cgroupdir);
-	write_file(file, "%d", pid);
-	snprintf(cgroupdir, sizeof(cgroupdir), "/syzcgroup/net/syz%llu", procid);
-	if (mkdir(cgroupdir, 0777)) {
-		debug("mkdir(%s) failed: %d\n", cgroupdir, errno);
-	}
-	snprintf(file, sizeof(file), "%s/cgroup.procs", cgroupdir);
-	write_file(file, "%d", pid);
 #endif
 #if SYZ_EXECUTOR || SYZ_RESET_NET_NAMESPACE
 	checkpoint_net_namespace();
