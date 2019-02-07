@@ -53,6 +53,8 @@ type Target struct {
 	SyscallMap  map[string]*Syscall
 	ConstMap    map[string]uint64
 	resourceMap map[string]*ResourceDesc
+	// Maps calls to resource desc ptrs for resources they create.
+	resourceDescMap map[*Syscall][]*ResourceDesc
 	// Maps resource name to a list of calls that can create the resource.
 	resourceCtors map[string][]*Syscall
 	any           anyTypes
@@ -162,6 +164,7 @@ func (target *Target) initTarget() {
 		})
 	}
 
+	target.resourceDescMap = target.buildResourceDescMap()
 	target.resourceCtors = make(map[string][]*Syscall)
 	for _, res := range target.Resources {
 		target.resourceCtors[res.Name] = target.calcResourceCtors(res.Kind, false)

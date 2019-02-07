@@ -15,22 +15,17 @@ var timespecRes = &ResourceDesc{
 }
 
 func (target *Target) calcResourceCtors(kind []string, precise bool) []*Syscall {
-	// Find calls that produce the necessary resources.
 	var metas []*Syscall
-	for _, meta := range target.Syscalls {
-		// Recurse into arguments to see if there is an out/inout arg of necessary type.
+	for meta, descs := range target.resourceDescMap {
 		ok := false
-		ForeachType(meta, func(typ Type) {
+		for _, desc := range descs {
 			if ok {
-				return
+				break
 			}
-			switch typ1 := typ.(type) {
-			case *ResourceType:
-				if typ1.Dir() != DirIn && isCompatibleResourceImpl(kind, typ1.Desc.Kind, precise) {
-					ok = true
-				}
+			if isCompatibleResourceImpl(kind, desc.Kind, precise) {
+				ok = true
 			}
-		})
+		}
 		if ok {
 			metas = append(metas, meta)
 		}
@@ -41,6 +36,23 @@ func (target *Target) calcResourceCtors(kind []string, precise bool) []*Syscall 
 		}
 	}
 	return metas
+}
+
+func (target *Target) buildResourceDescMap() map[*Syscall][]*ResourceDesc {
+	// Find calls that produce the necessary resources.
+	resourceDescMap := make(map[*Syscall][]*ResourceDesc)
+	for _, meta := range target.Syscalls {
+		// Recurse into arguments to see if there is an out/inout arg of necessary type.
+		ForeachType(meta, func(typ Type) {
+			switch typ1 := typ.(type) {
+			case *ResourceType:
+				if typ1.Dir() != DirIn {
+					resourceDescMap[meta] = append(resourceDescMap[meta], typ1.Desc)
+				}
+			}
+		})
+	}
+	return resourceDescMap
 }
 
 // isCompatibleResource returns true if resource of kind src can be passed as an argument of kind dst.
