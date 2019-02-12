@@ -1,0 +1,37 @@
+diff --git a/executor/common_linux.h b/executor/common_linux.h
+index e9d92e8f..ba2e2342 100644
+--- a/executor/common_linux.h
++++ b/executor/common_linux.h
+@@ -1035,9 +1035,7 @@ static uintptr_t syz_usb_connect(uintptr_t a0, uintptr_t a1, uintptr_t a2, uintp
+ 		return -1;
+ 	debug("syz_usb_connect: usb_fuzzer_open success\n");
+ 
+-	char device[32];
+-	sprintf(&device[0], "dummy_udc.%llu", procid);
+-	rv = usb_fuzzer_init(fd, speed, "dummy_udc", &device[0]);
++	rv = usb_fuzzer_init(fd, speed, "20980000.usb", "20980000.usb");
+ 	if (rv < 0)
+ 		return -1;
+ 	debug("syz_usb_connect: usb_fuzzer_init success\n");
+diff --git a/executor/executor.cc b/executor/executor.cc
+index 1006f3f7..f2120278 100644
+--- a/executor/executor.cc
++++ b/executor/executor.cc
+@@ -686,7 +686,7 @@ retry:
+ 		} else if (flag_threaded) {
+ 			// Wait for call completion.
+ 			// Note: sys knows about this 25ms timeout when it generates timespec/timeval values.
+-			const uint64 timeout_ms = usb_call ? 2000 : (flag_debug ? 1000 : 45);
++			const uint64 timeout_ms = usb_call ? 5000 : (flag_debug ? 1000 : 45);
+ 			if (event_timedwait(&th->done, timeout_ms))
+ 				handle_completion(th);
+ 			// Check if any of previous calls have completed.
+@@ -715,7 +715,7 @@ retry:
+ 		if (wait_end < start + 800)
+ 			wait_end = start + 800;
+ 		if (usb_prog)
+-			wait_end += 2000;
++			wait_end += 5000;
+ 		while (running > 0 && current_time_ms() <= wait_end) {
+ 			sleep_ms(1);
+ 			for (int i = 0; i < kMaxThreads; i++) {

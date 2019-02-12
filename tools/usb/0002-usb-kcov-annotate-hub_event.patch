@@ -1,0 +1,38 @@
+From 40314f3760b87bff4088b5fb6cc7d0102754cf66 Mon Sep 17 00:00:00 2001
+Message-Id: <40314f3760b87bff4088b5fb6cc7d0102754cf66.1549991346.git.andreyknvl@google.com>
+In-Reply-To: <ab7ce5590cc3a188ac9a33d389ff3d2bf1297d5b.1549991346.git.andreyknvl@google.com>
+References: <ab7ce5590cc3a188ac9a33d389ff3d2bf1297d5b.1549991346.git.andreyknvl@google.com>
+From: Andrey Konovalov <andreyknvl@google.com>
+Date: Thu, 17 Jan 2019 19:26:05 +0100
+Subject: [PATCH 2/3] usb, kcov: annotate hub_event
+
+Signed-off-by: Andrey Konovalov <andreyknvl@google.com>
+---
+ drivers/usb/core/hub.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/drivers/usb/core/hub.c b/drivers/usb/core/hub.c
+index 1d1e61e980f3..d91926cfdcc9 100644
+--- a/drivers/usb/core/hub.c
++++ b/drivers/usb/core/hub.c
+@@ -5330,6 +5330,8 @@ static void hub_event(struct work_struct *work)
+ 	hub_dev = hub->intfdev;
+ 	intf = to_usb_interface(hub_dev);
+ 
++	kcov_remote_start(kcov_remote_handle_usb(hdev->bus->busnum));
++
+ 	dev_dbg(hub_dev, "state %d ports %d chg %04x evt %04x\n",
+ 			hdev->state, hdev->maxchild,
+ 			/* NOTE: expects max 15 ports... */
+@@ -5436,6 +5438,8 @@ static void hub_event(struct work_struct *work)
+ 	/* Balance the stuff in kick_hub_wq() and allow autosuspend */
+ 	usb_autopm_put_interface(intf);
+ 	kref_put(&hub->kref, hub_release);
++
++	kcov_remote_stop();
+ }
+ 
+ static const struct usb_device_id hub_id_table[] = {
+-- 
+2.20.1.791.gb4d0f1c61a-goog
+
